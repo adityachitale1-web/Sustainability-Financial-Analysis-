@@ -424,4 +424,525 @@ elif page == "👥 Customer Insights":
                     points='outliers',
                     title="IRR Distribution by Project Type"
                 )
-                fig.update_layout(
+                fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            st.subheader("3.3 Violin Plot – Risk Score Distribution")
+            
+            fig = px.violin(
+                df,
+                x='risk_class',
+                y='risk_score',
+                color='risk_class',
+                box=True,
+                points='all',
+                title="Risk Score Distribution by Risk Class"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** High-risk projects show bimodal distribution indicating regulatory vs technology-driven risk.")
+        
+        with tab2:
+            st.subheader("4.1 Scatter Plot – CAPEX vs IRR")
+            
+            trend = st.toggle("Show Trendline", True, key="ci_trend")
+            
+            fig = px.scatter(
+                df,
+                x='capex_usd',
+                y='actual_irr',
+                color='project_type',
+                trendline='ols' if trend else None,
+                hover_data=['asset_id', 'region'],
+                title="Capital Investment vs IRR"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.markdown("---")
+            
+            st.subheader("4.2 Bubble Chart – Performance Matrix")
+            
+            bub = df.groupby('project_type').agg({
+                'actual_irr': 'mean',
+                'capex_usd': 'sum',
+                'emissions_avoided_tco2': 'sum'
+            }).reset_index()
+            bub['capacity_factor'] = [0.28, 0.38, 0.22, 0.88]
+            
+            fig = px.scatter(
+                bub,
+                x='capacity_factor',
+                y='actual_irr',
+                size='capex_usd',
+                color='project_type',
+                hover_name='project_type',
+                size_max=60,
+                title="Project Performance Matrix"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with tab3:
+            st.subheader("5.3 Sunburst Chart – Asset Portfolio Breakdown")
+            
+            sun_df = df.groupby(['region', 'project_type', 'risk_class']).size().reset_index(name='count')
+            
+            fig = px.sunburst(
+                sun_df,
+                path=['region', 'project_type', 'risk_class'],
+                values='count',
+                title="Portfolio: Region → Project Type → Risk Class"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("⚠️ No asset stakeholder data available.")
+
+# ============================================================
+# PAGE: PRODUCT PERFORMANCE
+# ============================================================
+
+elif page == "📦 Product Performance":
+    st.markdown('<p class="main-header">📦 Product Performance</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Portfolio Hierarchy & Correlation Analysis</p>', unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["🌳 Treemap", "🔥 Correlation Heatmap", "📊 Category Analysis"])
+    
+    with tab1:
+        st.subheader("5.2 Treemap – Energy Portfolio Hierarchy")
+        
+        df = data.get('energy_portfolio', pd.DataFrame())
+        
+        if not df.empty:
+            tree = df.groupby(['technology', 'asset_type']).agg({
+                'revenue_usd': 'sum',
+                'profit_margin': 'mean'
+            }).reset_index()
+            
+            fig = px.treemap(
+                tree,
+                path=['technology', 'asset_type'],
+                values='revenue_usd',
+                color='profit_margin',
+                color_continuous_scale='RdYlGn',
+                title="Portfolio: Technology → Asset Type (Size=Revenue, Color=Margin)"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Wind dominates revenue; Storage shows higher strategic margins.")
+        else:
+            st.warning("⚠️ No energy portfolio data available.")
+    
+    with tab2:
+        st.subheader("4.3 Heatmap – Correlation Matrix")
+        
+        df = data.get('correlation', pd.DataFrame())
+        
+        if not df.empty:
+            matrix = df.pivot(index='metric_1', columns='metric_2', values='correlation')
+            
+            fig = go.Figure(data=go.Heatmap(
+                z=matrix.values,
+                x=matrix.columns,
+                y=matrix.index,
+                colorscale='RdBu_r',
+                zmid=0,
+                text=np.round(matrix.values, 2),
+                texttemplate="%{text}",
+                textfont={"size": 9}
+            ))
+            fig.update_layout(
+                title="Sustainability-Financial Correlation Matrix",
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=500
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Strong correlation between Capacity Factor and IRR; LCOE negatively correlates with profitability.")
+        else:
+            st.warning("⚠️ No correlation data available.")
+    
+    with tab3:
+        st.subheader("Category Performance Analysis")
+        
+        df = data.get('energy_portfolio', pd.DataFrame())
+        
+        if not df.empty:
+            tech = df.groupby('technology').agg({
+                'revenue_usd': 'sum',
+                'profit_margin': 'mean'
+            }).reset_index()
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                fig = px.bar(
+                    tech.sort_values('revenue_usd'),
+                    y='technology',
+                    x='revenue_usd',
+                    orientation='h',
+                    color='technology',
+                    title="Revenue by Technology"
+                )
+                fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                fig = px.bar(
+                    tech.sort_values('profit_margin'),
+                    y='technology',
+                    x='profit_margin',
+                    orientation='h',
+                    color='technology',
+                    title="Profit Margin by Technology"
+                )
+                fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ No data available.")
+
+# ============================================================
+# PAGE: GEOGRAPHIC ANALYSIS
+# ============================================================
+
+elif page == "🗺️ Geographic Analysis":
+    st.markdown('<p class="main-header">🗺️ Geographic Analysis</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Regional Performance & Asset Distribution</p>', unsafe_allow_html=True)
+    
+    df = data.get('regional_energy', pd.DataFrame())
+    
+    if not df.empty:
+        # Add state codes
+        state_abbrev = {
+            'Texas': 'TX', 'California': 'CA', 'Florida': 'FL', 'New York': 'NY',
+            'Arizona': 'AZ', 'Colorado': 'CO', 'North Carolina': 'NC', 'Oregon': 'OR',
+            'Nevada': 'NV', 'Iowa': 'IA', 'Oklahoma': 'OK', 'New Mexico': 'NM',
+            'Kansas': 'KS', 'Illinois': 'IL', 'Massachusetts': 'MA'
+        }
+        df['state_code'] = df['region'].map(state_abbrev)
+        
+        tab1, tab2 = st.tabs(["🗺️ Choropleth Map", "🔵 Bubble Map"])
+        
+        with tab1:
+            st.subheader("6.1 Choropleth Map – Regional Performance")
+            
+            metric = st.selectbox(
+                "Select Metric",
+                ["revenue_usd_millions", "installed_capacity_mw", "emissions_avoided_tco2", "yoy_growth_pct"],
+                key="geo_metric"
+            )
+            
+            fig = px.choropleth(
+                df,
+                locations='state_code',
+                locationmode='USA-states',
+                color=metric,
+                scope='usa',
+                color_continuous_scale='Greens',
+                hover_name='region',
+                title=f"{metric.replace('_', ' ').title()} by State"
+            )
+            fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'))
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with tab2:
+            st.subheader("6.2 Bubble Map – Asset Distribution")
+            
+            fig = px.scatter_geo(
+                df,
+                lat='latitude',
+                lon='longitude',
+                size='installed_capacity_mw',
+                color='average_irr',
+                hover_name='region',
+                scope='usa',
+                color_continuous_scale='RdYlGn',
+                size_max=50,
+                title="Asset Distribution (Size=Capacity, Color=IRR)"
+            )
+            fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'))
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Some high-capacity regions underperform financially, indicating optimization potential.")
+        
+        st.subheader("📊 Regional Summary Table")
+        display_df = df[['region', 'installed_capacity_mw', 'revenue_usd_millions', 'average_irr', 'project_count']].copy()
+        display_df['average_irr'] = display_df['average_irr'].apply(lambda x: f"{x:.2%}")
+        st.dataframe(display_df.sort_values('revenue_usd_millions', ascending=False), use_container_width=True)
+    else:
+        st.warning("⚠️ No regional energy data available.")
+
+# ============================================================
+# PAGE: ATTRIBUTION & FUNNEL
+# ============================================================
+
+elif page == "🔀 Attribution & Funnel":
+    st.markdown('<p class="main-header">🔀 Attribution & Funnel</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Investment Journey & Lifecycle Analysis</p>', unsafe_allow_html=True)
+    
+    tab1, tab2, tab3 = st.tabs(["🔀 Sankey Diagram", "📉 Funnel Chart", "🍩 Attribution"])
+    
+    with tab1:
+        st.subheader("Investment Journey – Sankey Diagram")
+        
+        df = data.get('investment_journey', pd.DataFrame())
+        
+        if not df.empty:
+            flow = st.selectbox(
+                "Select Flow",
+                ["All Flows"] + df['flow_category'].unique().tolist(),
+                key="af_flow"
+            )
+            
+            if flow != "All Flows":
+                sdf = df[df['flow_category'] == flow]
+            else:
+                sdf = df
+            
+            # Create node list
+            nodes = list(pd.concat([sdf['source'], sdf['target']]).unique())
+            node_idx = {n: i for i, n in enumerate(nodes)}
+            
+            fig = go.Figure(go.Sankey(
+                node=dict(
+                    pad=15,
+                    thickness=20,
+                    label=nodes
+                ),
+                link=dict(
+                    source=[node_idx[s] for s in sdf['source']],
+                    target=[node_idx[t] for t in sdf['target']],
+                    value=sdf['value_usd'] / 1e6
+                )
+            ))
+            fig.update_layout(title="Investment Flow (Values in $M)", height=500)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ No investment journey data available.")
+    
+    with tab2:
+        st.subheader("5.4 Funnel Chart – Project Lifecycle")
+        
+        df = data.get('lifecycle_funnel', pd.DataFrame())
+        
+        if not df.empty:
+            ptype = st.selectbox("Select Project Type", df['project_type'].unique(), key="af_ptype")
+            fdf = df[df['project_type'] == ptype].sort_values('stage_order')
+            
+            fig = px.funnel(
+                fdf,
+                x='projects_count',
+                y='stage',
+                color='stage',
+                title=f"Project Lifecycle Funnel - {ptype}"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Largest drop-off during Feasibility stage due to regulatory constraints.")
+        else:
+            st.warning("⚠️ No lifecycle funnel data available.")
+    
+    with tab3:
+        st.subheader("5.1 Donut Chart – Capital Attribution")
+        
+        df = data.get('capital_allocation', pd.DataFrame())
+        
+        if not df.empty:
+            model = st.radio(
+                "Attribution Model",
+                ["first_investment_attribution", "last_investment_attribution", "proportional_attribution"],
+                key="af_model"
+            )
+            
+            adf = df.groupby('project_stage')[model].sum().reset_index()
+            
+            fig = px.pie(
+                adf,
+                values=model,
+                names='project_stage',
+                hole=0.4,
+                title=f"Capital Attribution - {model.replace('_', ' ').title()}"
+            )
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("⚠️ No capital allocation data available.")
+
+# ============================================================
+# PAGE: ML MODEL EVALUATION
+# ============================================================
+
+elif page == "🤖 ML Model Evaluation":
+    st.markdown('<p class="main-header">🤖 ML Model Evaluation</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">Project Prioritization Model Performance</p>', unsafe_allow_html=True)
+    
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Confusion Matrix", "📈 ROC Curve", "📉 Learning Curve", "🎯 Feature Importance"])
+    
+    with tab1:
+        st.subheader("7.1 Confusion Matrix")
+        
+        df = data.get('project_prioritization', pd.DataFrame())
+        
+        if not df.empty:
+            thresh = st.slider("Probability Threshold", 0.0, 1.0, 0.5, 0.05, key="ml_thresh")
+            df['pred'] = (df['probability_of_success'] >= thresh).astype(int)
+            
+            cm = confusion_matrix(df['actual_success'], df['pred'])
+            
+            fig = px.imshow(
+                cm,
+                x=['Predicted Fail', 'Predicted Success'],
+                y=['Actual Fail', 'Actual Success'],
+                text_auto=True,
+                color_continuous_scale='Blues',
+                title="Confusion Matrix"
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Metrics
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Accuracy", f"{accuracy_score(df['actual_success'], df['pred']):.3f}")
+            col2.metric("Precision", f"{precision_score(df['actual_success'], df['pred'], zero_division=0):.3f}")
+            col3.metric("Recall", f"{recall_score(df['actual_success'], df['pred'], zero_division=0):.3f}")
+            col4.metric("F1 Score", f"{f1_score(df['actual_success'], df['pred'], zero_division=0):.3f}")
+        else:
+            st.warning("⚠️ No project prioritization data available.")
+    
+    with tab2:
+        st.subheader("7.2 ROC Curve")
+        
+        df = data.get('project_prioritization', pd.DataFrame())
+        
+        if not df.empty:
+            fpr, tpr, thresholds = roc_curve(df['actual_success'], df['probability_of_success'])
+            roc_auc = auc(fpr, tpr)
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=fpr, y=tpr, name=f'ROC Curve (AUC = {roc_auc:.3f})', line=dict(color='blue', width=2)))
+            fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], name='Random', line=dict(color='gray', dash='dash')))
+            
+            fig.update_layout(
+                title="ROC Curve - Project Prioritization Model",
+                xaxis_title="False Positive Rate",
+                yaxis_title="True Positive Rate",
+                plot_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.metric("AUC Score", f"{roc_auc:.3f}")
+            st.info("💡 **Insight:** AUC of ~0.75-0.80 indicates robust prioritization capability.")
+        else:
+            st.warning("⚠️ No data available for ROC curve.")
+    
+    with tab3:
+        st.subheader("7.3 Learning Curve")
+        
+        df = data.get('learning_curve', pd.DataFrame())
+        
+        if not df.empty:
+            show_bands = st.toggle("Show Confidence Bands", True, key="ml_bands")
+            
+            fig = go.Figure()
+            
+            fig.add_trace(go.Scatter(
+                x=df['training_size'],
+                y=df['training_score'],
+                mode='lines+markers',
+                name='Training Score',
+                line=dict(color='blue')
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=df['training_size'],
+                y=df['validation_score'],
+                mode='lines+markers',
+                name='Validation Score',
+                line=dict(color='green')
+            ))
+            
+            if show_bands:
+                fig.add_trace(go.Scatter(
+                    x=list(df['training_size']) + list(df['training_size'][::-1]),
+                    y=list(df['training_upper']) + list(df['training_lower'][::-1]),
+                    fill='toself',
+                    fillcolor='rgba(0,0,255,0.1)',
+                    line=dict(color='rgba(255,255,255,0)'),
+                    showlegend=False
+                ))
+                
+                fig.add_trace(go.Scatter(
+                    x=list(df['training_size']) + list(df['training_size'][::-1]),
+                    y=list(df['validation_upper']) + list(df['validation_lower'][::-1]),
+                    fill='toself',
+                    fillcolor='rgba(0,255,0,0.1)',
+                    line=dict(color='rgba(255,255,255,0)'),
+                    showlegend=False
+                ))
+            
+            fig.update_layout(
+                title="Learning Curve - Model Diagnostics",
+                xaxis_title="Training Size",
+                yaxis_title="Score",
+                plot_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Model generalizes well; validation score converges indicating good fit.")
+        else:
+            st.warning("⚠️ No learning curve data available.")
+    
+    with tab4:
+        st.subheader("7.4 Feature Importance")
+        
+        df = data.get('financial_driver', pd.DataFrame())
+        
+        if not df.empty:
+            show_errors = st.toggle("Show Error Bars", True, key="ml_errors")
+            
+            df_sorted = df.sort_values('importance_score', ascending=True)
+            
+            fig = go.Figure(go.Bar(
+                x=df_sorted['importance_score'],
+                y=df_sorted['feature'],
+                orientation='h',
+                error_x=dict(
+                    type='data',
+                    array=df_sorted['std_deviation'],
+                    visible=show_errors
+                ),
+                marker_color='steelblue'
+            ))
+            
+            fig.update_layout(
+                title="Feature Importance - Financial & Sustainability Drivers",
+                xaxis_title="Importance Score",
+                yaxis_title="Feature",
+                plot_bgcolor='rgba(0,0,0,0)',
+                height=500
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+            st.info("💡 **Insight:** Policy incentives and capacity factor are the top drivers for project prioritization.")
+        else:
+            st.warning("⚠️ No feature importance data available.")
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.markdown("---")
+st.markdown(
+    """
+    <div style='text-align: center; color: #666;'>
+        <p>🌱 Sustainability & Financial Analytics Dashboard</p>
+        <p>NextEra Energy | Masters of AI in Business</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
