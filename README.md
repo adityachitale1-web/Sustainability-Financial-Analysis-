@@ -1,8 +1,8 @@
 # Sustainability & Financial Analytics Dashboard
 
-An interactive analytics dashboard for NextEra Energy to evaluate financial performance, risk exposure, and ROI of sustainability initiatives.
+An interactive analytics dashboard for NextEra Energy to evaluate Financial Performance, Risk Exposure, and ROI of Sustainability Initiatives.
 
-## 🚀 Live Demo
+## 🚀 
 [View Dashboard](https://your-app-name.streamlit.app)
 
 ## 📊 Features
