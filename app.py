@@ -1,12 +1,11 @@
 """
 Sustainability & Financial Analytics Dashboard
-Complete Self-Contained Version - Auto-generates data
+Complete Self-Contained Version - All Errors Fixed
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 
 # ============================================================
 # PAGE CONFIG
@@ -537,8 +536,9 @@ if page == "🏠 Executive Overview":
     
     with col1:
         st.subheader("📈 Revenue Trend")
-        df['month'] = df['date'].dt.to_period('M').astype(str)
-        trend = df.groupby('month')['revenue_usd'].sum().reset_index()
+        df_copy = df.copy()
+        df_copy['month'] = df_copy['date'].dt.to_period('M').astype(str)
+        trend = df_copy.groupby('month')['revenue_usd'].sum().reset_index()
         fig = px.line(trend, x='month', y='revenue_usd', markers=True)
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', xaxis_title="", yaxis_title="Revenue (USD)")
         st.plotly_chart(fig, use_container_width=True)
@@ -573,7 +573,7 @@ if page == "🏠 Executive Overview":
 elif page == "📈 Campaign Analytics":
     st.markdown('<p class="main-header">📈 Campaign Analytics</p>', unsafe_allow_html=True)
     
-    df = df_perf[(df_perf['year'].isin(selected_years)) & (df_perf['project_type'].isin(selected_types))]
+    df = df_perf[(df_perf['year'].isin(selected_years)) & (df_perf['project_type'].isin(selected_types))].copy()
     
     tab1, tab2, tab3 = st.tabs(["📈 Temporal", "📊 Comparison", "📅 Calendar"])
     
@@ -594,11 +594,12 @@ elif page == "📈 Campaign Analytics":
     
     with tab2:
         st.subheader("Regional Revenue by Quarter")
-        year_sel = st.selectbox("Year", selected_years, key="ca_year")
-        q_df = df[df['year'] == year_sel].groupby(['region', 'quarter'])['revenue_usd'].sum().reset_index()
-        fig = px.bar(q_df, x='region', y='revenue_usd', color='quarter', barmode='group')
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
+        if len(selected_years) > 0:
+            year_sel = st.selectbox("Year", selected_years, key="ca_year")
+            q_df = df[df['year'] == year_sel].groupby(['region', 'quarter'])['revenue_usd'].sum().reset_index()
+            fig = px.bar(q_df, x='region', y='revenue_usd', color='quarter', barmode='group')
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
         
         st.subheader("Capital by Project Stage")
         df['month'] = df['date'].dt.to_period('M').astype(str)
@@ -608,16 +609,39 @@ elif page == "📈 Campaign Analytics":
         st.plotly_chart(fig, use_container_width=True)
     
     with tab3:
-        st.subheader("Calendar Heatmap")
-        year_cal = st.selectbox("Year", selected_years, key="ca_cal")
-        cal_df = df[df['year'] == year_cal].copy()
-        cal_df['week'] = cal_df['date'].dt.isocalendar().week
-        cal_df['day'] = cal_df['date'].dt.dayofweek
-        hm = cal_df.groupby(['week', 'day'])['revenue_usd'].sum().reset_index()
-        pivot = hm.pivot(index='day', columns='week', values='revenue_usd')
-        fig = px.imshow(pivot, y=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], color_continuous_scale='Greens')
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
+        st.subheader("Calendar Heatmap - Weekly Revenue")
+        if len(selected_years) > 0:
+            year_cal = st.selectbox("Year", selected_years, key="ca_cal")
+            cal_df = df[df['year'] == year_cal].copy()
+            
+            # Aggregate by week number
+            cal_df['week'] = cal_df['date'].dt.isocalendar().week
+            weekly_data = cal_df.groupby('week')['revenue_usd'].sum().reset_index()
+            
+            # Create a simple bar chart instead of heatmap to avoid dimension issues
+            fig = px.bar(weekly_data, x='week', y='revenue_usd', 
+                        title=f"Weekly Revenue - {year_cal}",
+                        color='revenue_usd', color_continuous_scale='Greens')
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', xaxis_title="Week Number", yaxis_title="Revenue (USD)")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Monthly heatmap alternative
+            st.subheader("Monthly Revenue Heatmap")
+            cal_df['month_name'] = cal_df['date'].dt.month_name()
+            monthly = cal_df.groupby(['project_type', 'month_name'])['revenue_usd'].sum().reset_index()
+            monthly_pivot = monthly.pivot(index='project_type', columns='month_name', values='revenue_usd')
+            
+            # Reorder months
+            month_order = ['January', 'February', 'March', 'April', 'May', 'June', 
+                          'July', 'August', 'September', 'October', 'November', 'December']
+            available_months = [m for m in month_order if m in monthly_pivot.columns]
+            monthly_pivot = monthly_pivot[available_months]
+            
+            fig = px.imshow(monthly_pivot, 
+                           color_continuous_scale='Greens',
+                           title=f"Revenue by Project Type and Month - {year_cal}")
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig, use_container_width=True)
 
 # ============================================================
 # PAGE: CUSTOMER INSIGHTS
@@ -651,11 +675,26 @@ elif page == "👥 Customer Insights":
     
     with tab2:
         st.subheader("CAPEX vs IRR")
-        fig = px.scatter(df, x='capex_usd', y='actual_irr', color='project_type', trendline='ols', hover_data=['asset_id', 'region'])
+        
+        # Toggle for trendline
+        show_trendline = st.checkbox("Show Trendline (requires statsmodels)", value=False, key="ci_trend")
+        
+        if show_trendline:
+            try:
+                fig = px.scatter(df, x='capex_usd', y='actual_irr', color='project_type', 
+                               trendline='ols', hover_data=['asset_id', 'region'])
+            except:
+                st.warning("Trendline requires statsmodels package. Showing without trendline.")
+                fig = px.scatter(df, x='capex_usd', y='actual_irr', color='project_type', 
+                               hover_data=['asset_id', 'region'])
+        else:
+            fig = px.scatter(df, x='capex_usd', y='actual_irr', color='project_type', 
+                           hover_data=['asset_id', 'region'])
+        
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
         
-        st.subheader("Bubble Chart")
+        st.subheader("Bubble Chart - Performance Matrix")
         bub = df.groupby('project_type').agg({'actual_irr': 'mean', 'capex_usd': 'sum', 'emissions_avoided_tco2': 'sum'}).reset_index()
         bub['capacity_factor'] = [0.28, 0.38, 0.22, 0.88]
         fig = px.scatter(bub, x='capacity_factor', y='actual_irr', size='capex_usd', color='project_type', hover_name='project_type', size_max=60)
@@ -688,7 +727,16 @@ elif page == "📦 Product Performance":
     with tab2:
         df = data['correlation']
         matrix = df.pivot(index='metric_1', columns='metric_2', values='correlation')
-        fig = go.Figure(data=go.Heatmap(z=matrix.values, x=matrix.columns, y=matrix.index, colorscale='RdBu_r', zmid=0, text=np.round(matrix.values, 2), texttemplate="%{text}", textfont={"size": 9}))
+        fig = go.Figure(data=go.Heatmap(
+            z=matrix.values, 
+            x=matrix.columns.tolist(), 
+            y=matrix.index.tolist(), 
+            colorscale='RdBu_r', 
+            zmid=0, 
+            text=np.round(matrix.values, 2), 
+            texttemplate="%{text}", 
+            textfont={"size": 9}
+        ))
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', height=500, title="Correlation Matrix")
         st.plotly_chart(fig, use_container_width=True)
     
@@ -712,23 +760,29 @@ elif page == "📦 Product Performance":
 elif page == "🗺️ Geographic Analysis":
     st.markdown('<p class="main-header">🗺️ Geographic Analysis</p>', unsafe_allow_html=True)
     
-    df = data['regional_energy']
-    state_abbrev = {'Texas': 'TX', 'California': 'CA', 'Florida': 'FL', 'New York': 'NY', 'Arizona': 'AZ', 'Colorado': 'CO', 'North Carolina': 'NC', 'Oregon': 'OR', 'Nevada': 'NV', 'Iowa': 'IA', 'Oklahoma': 'OK', 'New Mexico': 'NM', 'Kansas': 'KS', 'Illinois': 'IL', 'Massachusetts': 'MA'}
+    df = data['regional_energy'].copy()
+    state_abbrev = {'Texas': 'TX', 'California': 'CA', 'Florida': 'FL', 'New York': 'NY', 'Arizona': 'AZ', 
+                   'Colorado': 'CO', 'North Carolina': 'NC', 'Oregon': 'OR', 'Nevada': 'NV', 'Iowa': 'IA', 
+                   'Oklahoma': 'OK', 'New Mexico': 'NM', 'Kansas': 'KS', 'Illinois': 'IL', 'Massachusetts': 'MA'}
     df['state_code'] = df['region'].map(state_abbrev)
     
     tab1, tab2 = st.tabs(["🗺️ Choropleth", "🔵 Bubble Map"])
     
     with tab1:
         metric = st.selectbox("Metric", ["revenue_usd_millions", "installed_capacity_mw", "emissions_avoided_tco2"], key="geo_metric")
-        fig = px.choropleth(df, locations='state_code', locationmode='USA-states', color=metric, scope='usa', color_continuous_scale='Greens', hover_name='region')
+        fig = px.choropleth(df, locations='state_code', locationmode='USA-states', color=metric, 
+                           scope='usa', color_continuous_scale='Greens', hover_name='region')
         fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'))
         st.plotly_chart(fig, use_container_width=True)
     
     with tab2:
-        fig = px.scatter_geo(df, lat='latitude', lon='longitude', size='installed_capacity_mw', color='average_irr', hover_name='region', scope='usa', color_continuous_scale='RdYlGn', size_max=50)
+        fig = px.scatter_geo(df, lat='latitude', lon='longitude', size='installed_capacity_mw', 
+                            color='average_irr', hover_name='region', scope='usa', 
+                            color_continuous_scale='RdYlGn', size_max=50)
         fig.update_layout(geo=dict(bgcolor='rgba(0,0,0,0)'))
         st.plotly_chart(fig, use_container_width=True)
     
+    st.subheader("📊 Regional Summary")
     st.dataframe(df[['region', 'installed_capacity_mw', 'revenue_usd_millions', 'average_irr', 'project_count']], use_container_width=True)
 
 # ============================================================
@@ -742,13 +796,21 @@ elif page == "🔀 Attribution & Funnel":
     
     with tab1:
         df = data['investment_journey']
-        flow = st.selectbox("Flow", ["All"] + df['flow_category'].unique().tolist(), key="af_flow")
+        flow_options = ["All"] + df['flow_category'].unique().tolist()
+        flow = st.selectbox("Flow Category", flow_options, key="af_flow")
         sdf = df if flow == "All" else df[df['flow_category'] == flow]
         
         nodes = list(pd.concat([sdf['source'], sdf['target']]).unique())
         node_idx = {n: i for i, n in enumerate(nodes)}
         
-        fig = go.Figure(go.Sankey(node=dict(pad=15, thickness=20, label=nodes), link=dict(source=[node_idx[s] for s in sdf['source']], target=[node_idx[t] for t in sdf['target']], value=sdf['value_usd']/1e6)))
+        fig = go.Figure(go.Sankey(
+            node=dict(pad=15, thickness=20, label=nodes),
+            link=dict(
+                source=[node_idx[s] for s in sdf['source']],
+                target=[node_idx[t] for t in sdf['target']],
+                value=sdf['value_usd']/1e6
+            )
+        ))
         fig.update_layout(title="Investment Flow ($M)", height=500)
         st.plotly_chart(fig, use_container_width=True)
     
@@ -762,7 +824,7 @@ elif page == "🔀 Attribution & Funnel":
     
     with tab3:
         df = data['capital_allocation']
-        model = st.radio("Model", ["first_investment_attribution", "last_investment_attribution", "proportional_attribution"], key="af_model")
+        model = st.radio("Attribution Model", ["first_investment_attribution", "last_investment_attribution", "proportional_attribution"], key="af_model")
         adf = df.groupby('project_stage')[model].sum().reset_index()
         fig = px.pie(adf, values=model, names='project_stage', hole=0.4)
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
@@ -778,12 +840,14 @@ elif page == "🤖 ML Model Evaluation":
     tab1, tab2, tab3, tab4 = st.tabs(["📊 Confusion Matrix", "📈 ROC", "📉 Learning Curve", "🎯 Features"])
     
     with tab1:
-        df = data['project_prioritization']
-        thresh = st.slider("Threshold", 0.0, 1.0, 0.5, 0.05, key="ml_thresh")
+        df = data['project_prioritization'].copy()
+        thresh = st.slider("Probability Threshold", 0.0, 1.0, 0.5, 0.05, key="ml_thresh")
         df['pred'] = (df['probability_of_success'] >= thresh).astype(int)
         
         cm = confusion_matrix(df['actual_success'], df['pred'])
-        fig = px.imshow(cm, x=['Fail', 'Success'], y=['Fail', 'Success'], text_auto=True, color_continuous_scale='Blues', title="Confusion Matrix")
+        fig = px.imshow(cm, x=['Predicted Fail', 'Predicted Success'], y=['Actual Fail', 'Actual Success'], 
+                       text_auto=True, color_continuous_scale='Blues', title="Confusion Matrix")
+        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
         
         col1, col2, col3, col4 = st.columns(4)
@@ -798,26 +862,57 @@ elif page == "🤖 ML Model Evaluation":
         roc_auc = auc(fpr, tpr)
         
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=fpr, y=tpr, name=f'ROC (AUC={roc_auc:.3f})'))
-        fig.add_trace(go.Scatter(x=[0,1], y=[0,1], line=dict(dash='dash'), name='Random'))
-        fig.update_layout(title="ROC Curve", xaxis_title="FPR", yaxis_title="TPR")
+        fig.add_trace(go.Scatter(x=fpr, y=tpr, name=f'ROC (AUC={roc_auc:.3f})', line=dict(color='blue', width=2)))
+        fig.add_trace(go.Scatter(x=[0,1], y=[0,1], line=dict(dash='dash', color='gray'), name='Random'))
+        fig.update_layout(title="ROC Curve", xaxis_title="False Positive Rate", yaxis_title="True Positive Rate", plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
         st.metric("AUC Score", f"{roc_auc:.3f}")
     
     with tab3:
         df = data['learning_curve']
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df['training_size'], y=df['training_score'], name='Training', mode='lines+markers'))
-        fig.add_trace(go.Scatter(x=df['training_size'], y=df['validation_score'], name='Validation', mode='lines+markers'))
-        fig.update_layout(title="Learning Curve", xaxis_title="Training Size", yaxis_title="Score")
+        fig.add_trace(go.Scatter(x=df['training_size'], y=df['training_score'], name='Training', mode='lines+markers', line=dict(color='blue')))
+        fig.add_trace(go.Scatter(x=df['training_size'], y=df['validation_score'], name='Validation', mode='lines+markers', line=dict(color='green')))
+        
+        # Add confidence bands
+        fig.add_trace(go.Scatter(
+            x=list(df['training_size']) + list(df['training_size'][::-1]),
+            y=list(df['training_upper']) + list(df['training_lower'][::-1]),
+            fill='toself', fillcolor='rgba(0,0,255,0.1)', line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False, name='Training CI'
+        ))
+        fig.add_trace(go.Scatter(
+            x=list(df['training_size']) + list(df['training_size'][::-1]),
+            y=list(df['validation_upper']) + list(df['validation_lower'][::-1]),
+            fill='toself', fillcolor='rgba(0,255,0,0.1)', line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False, name='Validation CI'
+        ))
+        
+        fig.update_layout(title="Learning Curve", xaxis_title="Training Size", yaxis_title="Score", plot_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig, use_container_width=True)
     
     with tab4:
         df = data['financial_driver']
         df_sort = df.sort_values('importance_score', ascending=True)
-        fig = go.Figure(go.Bar(x=df_sort['importance_score'], y=df_sort['feature'], orientation='h', error_x=dict(type='data', array=df_sort['std_deviation']), marker_color='steelblue'))
-        fig.update_layout(title="Feature Importance", xaxis_title="Importance")
+        
+        # Create color based on category
+        colors = {'Policy': '#1E88E5', 'Technical': '#43A047', 'Financial': '#FFC107', 'External': '#E91E63'}
+        df_sort['color'] = df_sort['category'].map(colors)
+        
+        fig = go.Figure(go.Bar(
+            x=df_sort['importance_score'], 
+            y=df_sort['feature'], 
+            orientation='h',
+            marker_color=df_sort['color'],
+            error_x=dict(type='data', array=df_sort['std_deviation']),
+            text=df_sort['category'],
+            textposition='inside'
+        ))
+        fig.update_layout(title="Feature Importance by Category", xaxis_title="Importance Score", plot_bgcolor='rgba(0,0,0,0)', height=500)
         st.plotly_chart(fig, use_container_width=True)
+        
+        # Legend
+        st.markdown("**Categories:** 🔵 Policy | 🟢 Technical | 🟡 Financial | 🔴 External")
 
 # ============================================================
 # FOOTER
